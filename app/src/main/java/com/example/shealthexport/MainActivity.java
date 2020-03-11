@@ -2,14 +2,21 @@ package com.example.shealthexport;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
 import android.net.Uri;
 import android.os.AsyncTask;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
@@ -27,6 +34,7 @@ import com.samsung.android.sdk.healthdata.HealthResultHolder;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -37,7 +45,15 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TimeZone;
 
+import net.lingala.zip4j.core.ZipFile;
+import net.lingala.zip4j.exception.ZipException;
+import net.lingala.zip4j.model.ZipParameters;
+import net.lingala.zip4j.util.Zip4jConstants;
+
+
 public class MainActivity extends AppCompatActivity {
+
+    private static final int REQUEST_CODE_READ_WRITE_EXTERNAL_STORAGE= 101;
 
     private FloatingActionButton btnLoadData;
     private FloatingActionButton btnSendData;
@@ -57,6 +73,12 @@ public class MainActivity extends AppCompatActivity {
     private static final long ONE_DAY_IN_MILLIS = 24 * 60 * 60 * 1000L;
 
     private static final String sHealthDataFile = "SHealthData.csv";
+    private static final String SUBFOLDER = "/SHealth Data/";
+
+    private static final String sHealthDataFileZip = "SHealthData.zip";
+
+    private boolean flagHeartRateLoaded = false;
+    private boolean flagStepCountLoaded = false;
 
     private class StepCountData {
 
@@ -193,26 +215,39 @@ public class MainActivity extends AppCompatActivity {
 
         tvSHealthInfo = findViewById(R.id.tv_info);
 
-        btnSendData = findViewById(R.id.btn_load);
-        btnSendData.setEnabled(false);
-        btnSendData.setOnClickListener(new View.OnClickListener() {
+        btnLoadData = findViewById(R.id.btn_load);
+        btnLoadData.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                flagHeartRateLoaded = false;
+                flagStepCountLoaded = false;
                 listHeartRateData = new ArrayList<HeartRateData>();
                 listStepCountData = new ArrayList<StepCountData>();
                 checkPermissionAndReadData();
             }
         });
 
-        btnLoadData = findViewById(R.id.btn_send);
-        btnLoadData.setEnabled(false);
-        btnLoadData.setOnClickListener(new View.OnClickListener() {
+        btnSendData = findViewById(R.id.btn_send);
+        btnSendData.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 sHealthData = new StringBuilder();
-                createFileAndSendData();
+                sendFile();
             }
         });
+
+        disableButton(btnLoadData);
+        disableButton(btnSendData);
+
+
+        int MyVersion = Build.VERSION.SDK_INT;
+        if (MyVersion > Build.VERSION_CODES.LOLLIPOP_MR1) {
+            if (!checkIfAlreadyhavePermission()) {
+                requestForSpecificPermission();
+            } else {
+                enableButton(btnLoadData);
+            }
+        }
 
     }
 
@@ -231,8 +266,7 @@ public class MainActivity extends AppCompatActivity {
             tvSHealthInfo.setText("SHealth data service is connected.");
 
             // enable buttons if connected
-            btnLoadData.setEnabled(true);
-            btnSendData.setEnabled(true);
+            // enableButton(btnLoadData);
         }
 
         @Override
@@ -240,12 +274,14 @@ public class MainActivity extends AppCompatActivity {
             Log.d(APP_TAG, "SHealth data service is not available.");
             tvSHealthInfo.setText("SHealth data service is not available.");
             showConnectionFailureDialog(error);
-        }
+            disableButton(btnLoadData);
+    }
 
         @Override
         public void onDisconnected() {
             Log.d(APP_TAG, "SHealth data service is disconnected.");
             tvSHealthInfo.setText("SHealth data service is disconnected.");
+            disableButton(btnLoadData);
         }
     };
 
@@ -418,6 +454,11 @@ public class MainActivity extends AppCompatActivity {
 
                         Log.i(APP_TAG, "Number of loaded data points (steps): " + ii);
                         tvSHealthInfo.setText(tvSHealthInfo.getText() + "\nStep count data loaded (" + ii + ")");
+                        flagStepCountLoaded = true;
+                        if (flagHeartRateLoaded == true) {
+                            Toast.makeText(MainActivity.this, "Data loaded.", Toast.LENGTH_LONG).show();
+                            createFile();
+                        }
                         result.close();
                     }
                 }
@@ -477,15 +518,19 @@ public class MainActivity extends AppCompatActivity {
                     } finally {
                         Log.i(APP_TAG, "Number of loaded data points (heart rate): " + ii);
                         tvSHealthInfo.setText(tvSHealthInfo.getText() + "\nHeart rate data loaded (" + ii + ")");
+                        flagHeartRateLoaded = true;
+                        if (flagStepCountLoaded == true) {
+                            Toast.makeText(MainActivity.this, "Data loaded.", Toast.LENGTH_LONG).show();
+                            createFile();
+                        }
                         result.close();
                     }
                 }
             };
 
 
-
-    private void createFileAndSendData() {
-        class GetDataForExport extends AsyncTask<Void, Void, StringBuilder> {
+    private void createFile() {
+        class CreateHealthDataFile extends AsyncTask<Void, Void, StringBuilder> {
 
             @Override
             protected StringBuilder doInBackground(Void... voids) {
@@ -514,40 +559,98 @@ public class MainActivity extends AppCompatActivity {
             }
 
             @Override
-            protected void onPostExecute(StringBuilder data) {
-                super.onPostExecute(data);
-
-                sHealthData = data;
+            protected void onPostExecute(StringBuilder sHealthData) {
+                super.onPostExecute(sHealthData);
 
                 // Export data
                 try{
-                    //saving the file into device
+
+                    //saving the file to internal storage
                     FileOutputStream out = openFileOutput(sHealthDataFile, Context.MODE_PRIVATE);
                     out.write((sHealthData.toString()).getBytes());
                     out.close();
 
+                    // Create subfolder if it does not already exist
+                    String subDirString = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS) + SUBFOLDER;
+                    File subDir = new File(subDirString);
+                    if (!subDir.exists()) {
+                        subDir.mkdirs(); // creates needed dirs
+                    }
+
+                    File dataFile = new File(subDir, sHealthDataFile);
+                    FileOutputStream fileOutput = new FileOutputStream(dataFile);
+                    OutputStreamWriter outputStreamWriter = new OutputStreamWriter(fileOutput);
+                    outputStreamWriter.write(sHealthData.toString());
+                    outputStreamWriter.flush();
+                    fileOutput.getFD().sync();
+                    outputStreamWriter.close();
+
                     Toast.makeText(getApplicationContext(), sHealthDataFile + " created", Toast.LENGTH_LONG).show();
-
-                    //exporting
-                    Context context = getApplicationContext();
-                    File filelocation = new File(getFilesDir(), sHealthDataFile);
-                    Uri path = FileProvider.getUriForFile(context, "com.example.shealthexport.fileprovider", filelocation);
-                    Intent fileIntent = new Intent(Intent.ACTION_SEND);
-                    fileIntent.setType("text/csv");
-                    fileIntent.putExtra(Intent.EXTRA_SUBJECT, sHealthDataFile);
-                    fileIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-                    fileIntent.putExtra(Intent.EXTRA_STREAM, path);
-
-                    startActivity(Intent.createChooser(fileIntent, "Send " + sHealthDataFile));
+                    enableButton(btnSendData);
                 }
                 catch(Exception e){
+                    Toast.makeText(MainActivity.this, "File not saved.", Toast.LENGTH_LONG).show();
                     e.printStackTrace();
                 }
             }
         }
 
-        GetDataForExport gd = new GetDataForExport();
-        gd.execute();
+        CreateHealthDataFile cf = new CreateHealthDataFile();
+        cf.execute();
+    }
+
+
+    private void sendFile() {
+        // Send data
+        try{
+            Context context = getApplicationContext();
+            File filelocation = new File(getFilesDir(), sHealthDataFile);
+            Uri path = FileProvider.getUriForFile(context, "com.example.shealthexport.fileprovider", filelocation);
+
+            Intent fileIntent = new Intent(Intent.ACTION_SEND);
+            fileIntent.setType("text/csv");
+            fileIntent.putExtra(Intent.EXTRA_SUBJECT, sHealthDataFile);
+            fileIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            fileIntent.putExtra(Intent.EXTRA_STREAM, path);
+
+            startActivity(Intent.createChooser(fileIntent, "Send " + sHealthDataFile));
+        }
+        catch(Exception e){
+            Toast.makeText(MainActivity.this, "File not sent.", Toast.LENGTH_LONG).show();
+            e.printStackTrace();
+        }
+
+
+        // Zipped folder name
+        try {
+            String zipFilePath = sHealthDataFileZip;
+            ZipFile zipFile = new ZipFile(getFilesDir() + zipFilePath);
+            ArrayList<File> filesToAdd = new ArrayList<>();
+            // Add files which are to be compressed to the array list
+            filesToAdd.add(new File(getFilesDir(), sHealthDataFile));
+
+            // Initiate Zip Parameters
+            ZipParameters parameters = new ZipParameters();
+            // set compression method to deflate compression
+            parameters.setCompressionMethod(Zip4jConstants.COMP_DEFLATE);
+            parameters.setCompressionLevel(Zip4jConstants.DEFLATE_LEVEL_NORMAL);
+            parameters.setEncryptFiles(true);
+            parameters.setEncryptionMethod(Zip4jConstants.ENC_METHOD_AES);
+            parameters.setAesKeyStrength(Zip4jConstants.AES_STRENGTH_256);
+            // Setting password
+            parameters.setPassword("password");
+            zipFile.addFiles(filesToAdd, parameters);
+
+            Toast.makeText(MainActivity.this, "File encrypted.", Toast.LENGTH_LONG).show();
+
+
+        } catch (ZipException e) {
+            Toast.makeText(MainActivity.this, "File not encrypted.", Toast.LENGTH_LONG).show();
+            e.printStackTrace();
+        }
+
+
+
     }
 
 
@@ -569,5 +672,49 @@ public class MainActivity extends AppCompatActivity {
 
     private String ms2str(String timeInMillis) {
         return(dateFormatter.format(new Date(Long.parseLong(timeInMillis))));
+    }
+
+
+    private boolean checkIfAlreadyhavePermission() {
+        int result = ContextCompat.checkSelfPermission(this, Manifest.permission.GET_ACCOUNTS);
+        if (result == PackageManager.PERMISSION_GRANTED) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    private void requestForSpecificPermission() {
+        ActivityCompat.requestPermissions(this,
+                new String[]{Manifest.permission.READ_EXTERNAL_STORAGE,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_CODE_READ_WRITE_EXTERNAL_STORAGE);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        switch (requestCode) {
+            case REQUEST_CODE_READ_WRITE_EXTERNAL_STORAGE:
+                if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    //granted
+                    enableButton(btnLoadData);
+                } else {
+                    //not granted
+                    disableButton(btnLoadData);
+                }
+                break;
+            default:
+                super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        }
+    }
+
+    private void disableButton(FloatingActionButton button) {
+        button.setEnabled(false);
+        //button.setBackgroundColor(ContextCompat.getColor(getApplicationContext(), R.color.colorDisabledButton));
+        button.setBackgroundTintList(ColorStateList.valueOf(ContextCompat.getColor(getApplicationContext(), R.color.colorDisabledButton)));
+    }
+
+    private void enableButton(FloatingActionButton button) {
+        button.setEnabled(true);
+        button.setBackgroundTintList(ColorStateList.valueOf(ContextCompat.getColor(getApplicationContext(), R.color.colorEnabledButton)));
     }
 }
