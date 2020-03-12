@@ -601,30 +601,13 @@ public class MainActivity extends AppCompatActivity {
 
 
     private void sendFile() {
-        // Send data
-        try{
-            Context context = getApplicationContext();
-            File filelocation = new File(getFilesDir(), sHealthDataFile);
-            Uri path = FileProvider.getUriForFile(context, "com.example.shealthexport.fileprovider", filelocation);
 
-            Intent fileIntent = new Intent(Intent.ACTION_SEND);
-            fileIntent.setType("text/csv");
-            fileIntent.putExtra(Intent.EXTRA_SUBJECT, sHealthDataFile);
-            fileIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-            fileIntent.putExtra(Intent.EXTRA_STREAM, path);
-
-            startActivity(Intent.createChooser(fileIntent, "Send " + sHealthDataFile));
-        }
-        catch(Exception e){
-            Toast.makeText(MainActivity.this, "File not sent.", Toast.LENGTH_LONG).show();
-            e.printStackTrace();
-        }
 
 
         // Zipped folder name
         try {
             String zipFilePath = sHealthDataFileZip;
-            ZipFile zipFile = new ZipFile(getFilesDir() + zipFilePath);
+            ZipFile zipFile = new ZipFile(getFilesDir() + "/" + zipFilePath);
             ArrayList<File> filesToAdd = new ArrayList<>();
             // Add files which are to be compressed to the array list
             filesToAdd.add(new File(getFilesDir(), sHealthDataFile));
@@ -642,6 +625,26 @@ public class MainActivity extends AppCompatActivity {
             zipFile.addFiles(filesToAdd, parameters);
 
             Toast.makeText(MainActivity.this, "File encrypted.", Toast.LENGTH_LONG).show();
+
+
+            // Send data
+            try{
+                Context context = getApplicationContext();
+                File filelocation = new File(getFilesDir(), sHealthDataFileZip);
+                Uri path = FileProvider.getUriForFile(context, "com.example.shealthexport.fileprovider", filelocation);
+
+                Intent fileIntent = new Intent(Intent.ACTION_SEND);
+                fileIntent.setType("text/csv");
+                fileIntent.putExtra(Intent.EXTRA_SUBJECT, sHealthDataFileZip);
+                fileIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                fileIntent.putExtra(Intent.EXTRA_STREAM, path);
+
+                startActivity(Intent.createChooser(fileIntent, "Send " + sHealthDataFileZip));
+            }
+            catch(Exception e){
+                Toast.makeText(MainActivity.this, "File not sent.", Toast.LENGTH_LONG).show();
+                e.printStackTrace();
+            }
 
 
         } catch (ZipException e) {
