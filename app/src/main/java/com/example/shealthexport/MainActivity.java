@@ -17,8 +17,10 @@ import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.text.InputType;
 import android.util.Log;
 import android.view.View;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -34,6 +36,7 @@ import com.samsung.android.sdk.healthdata.HealthResultHolder;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -79,6 +82,8 @@ public class MainActivity extends AppCompatActivity {
 
     private boolean flagHeartRateLoaded = false;
     private boolean flagStepCountLoaded = false;
+
+    private String mPassword = "";
 
     private class StepCountData {
 
@@ -602,57 +607,112 @@ public class MainActivity extends AppCompatActivity {
 
     private void sendFile() {
 
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Wähle Passwort für Datenverschlüsselung:");
+
+        // Set up the input
+                final EditText input = new EditText(this);
+                input.setInputType(InputType.TYPE_CLASS_TEXT);
+                builder.setView(input);
+
+                builder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        mPassword = input.getText().toString();
+
+                        // Create subfolder if it does not already exist
+                        String subDirString = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS) + SUBFOLDER;
+                        File subDir = new File(subDirString);
+                        if (!subDir.exists()) {
+                            subDir.mkdirs();
+                        }
+
+                        String passwordFileName = "info.csv";
+                        String passwordPath = subDirString + "/" + passwordFileName;
+
+                        File passwordFile = new File(passwordPath);
+                        if (!passwordFile.exists()) {
+                            try {
+                                passwordFile.createNewFile();
+                            } catch (IOException ioe) {
+                                ioe.printStackTrace();
+                            }
+                        }
+                        try {
+                            FileOutputStream fileOutput = new FileOutputStream(passwordFile);
+                            OutputStreamWriter outputStreamWriter = new OutputStreamWriter(fileOutput);
+                            outputStreamWriter.append(mPassword + "\n");
+                            outputStreamWriter.close();
+                        } catch(Exception e){
+                            Toast.makeText(MainActivity.this, "File not saved.", Toast.LENGTH_LONG).show();
+                            e.printStackTrace();
+                        }
 
 
-        // Zipped folder name
-        try {
-            String zipFilePath = sHealthDataFileZip;
-            ZipFile zipFile = new ZipFile(getFilesDir() + "/" + zipFilePath);
-            ArrayList<File> filesToAdd = new ArrayList<>();
-            // Add files which are to be compressed to the array list
-            filesToAdd.add(new File(getFilesDir(), sHealthDataFile));
+                        // Zipped folder name
+                        try {
+                            String zipFilePath = sHealthDataFileZip;
+                            ZipFile zipFile = new ZipFile(getFilesDir() + "/" + zipFilePath);
+                            ArrayList<File> filesToAdd = new ArrayList<>();
+                            // Add files which are to be compressed to the array list
+                            filesToAdd.add(new File(getFilesDir(), sHealthDataFile));
 
-            // Initiate Zip Parameters
-            ZipParameters parameters = new ZipParameters();
-            // set compression method to deflate compression
-            parameters.setCompressionMethod(Zip4jConstants.COMP_DEFLATE);
-            parameters.setCompressionLevel(Zip4jConstants.DEFLATE_LEVEL_NORMAL);
-            parameters.setEncryptFiles(true);
-            parameters.setEncryptionMethod(Zip4jConstants.ENC_METHOD_AES);
-            parameters.setAesKeyStrength(Zip4jConstants.AES_STRENGTH_256);
-            // Setting password
-            parameters.setPassword("password");
-            zipFile.addFiles(filesToAdd, parameters);
+                            // Initiate Zip Parameters
+                            ZipParameters parameters = new ZipParameters();
+                            // set compression method to deflate compression
+                            parameters.setCompressionMethod(Zip4jConstants.COMP_DEFLATE);
+                            parameters.setCompressionLevel(Zip4jConstants.DEFLATE_LEVEL_NORMAL);
 
-            Toast.makeText(MainActivity.this, "File encrypted.", Toast.LENGTH_LONG).show();
+                            if (!mPassword.equals("")) {
+                                parameters.setEncryptFiles(true);
+                                parameters.setEncryptionMethod(Zip4jConstants.ENC_METHOD_AES);
+                                parameters.setAesKeyStrength(Zip4jConstants.AES_STRENGTH_256);
+                                // Setting password
+                                parameters.setPassword(mPassword);
+                                Toast.makeText(MainActivity.this, "File encrypted.", Toast.LENGTH_LONG).show();
+                            } else {
+                                Toast.makeText(MainActivity.this, "File not encrypted.", Toast.LENGTH_LONG).show();
+                            }
 
-
-            // Send data
-            try{
-                Context context = getApplicationContext();
-                File filelocation = new File(getFilesDir(), sHealthDataFileZip);
-                Uri path = FileProvider.getUriForFile(context, "com.example.shealthexport.fileprovider", filelocation);
-
-                Intent fileIntent = new Intent(Intent.ACTION_SEND);
-                fileIntent.setType("text/csv");
-                fileIntent.putExtra(Intent.EXTRA_SUBJECT, sHealthDataFileZip);
-                fileIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-                fileIntent.putExtra(Intent.EXTRA_STREAM, path);
-
-                startActivity(Intent.createChooser(fileIntent, "Send " + sHealthDataFileZip));
-            }
-            catch(Exception e){
-                Toast.makeText(MainActivity.this, "File not sent.", Toast.LENGTH_LONG).show();
-                e.printStackTrace();
-            }
+                            zipFile.addFiles(filesToAdd, parameters);
 
 
-        } catch (ZipException e) {
-            Toast.makeText(MainActivity.this, "File not encrypted.", Toast.LENGTH_LONG).show();
-            e.printStackTrace();
-        }
 
 
+                            // Send data
+                            try{
+                                Context context = getApplicationContext();
+                                File filelocation = new File(getFilesDir(), sHealthDataFileZip);
+                                Uri path = FileProvider.getUriForFile(context, "com.example.shealthexport.fileprovider", filelocation);
+
+                                Intent fileIntent = new Intent(Intent.ACTION_SEND);
+                                fileIntent.setType("text/csv");
+                                fileIntent.putExtra(Intent.EXTRA_SUBJECT, sHealthDataFileZip);
+                                fileIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                                fileIntent.putExtra(Intent.EXTRA_STREAM, path);
+
+                                startActivity(Intent.createChooser(fileIntent, "Send " + sHealthDataFileZip));
+                            }
+                            catch(Exception e){
+                                Toast.makeText(MainActivity.this, "File not sent.", Toast.LENGTH_LONG).show();
+                                e.printStackTrace();
+                            }
+
+
+                        } catch (ZipException e) {
+                            Toast.makeText(MainActivity.this, "File not encrypted.", Toast.LENGTH_LONG).show();
+                            e.printStackTrace();
+                        }
+                    }
+                });
+                builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        dialog.cancel();
+                    }
+                });
+
+        builder.show();
 
     }
 
