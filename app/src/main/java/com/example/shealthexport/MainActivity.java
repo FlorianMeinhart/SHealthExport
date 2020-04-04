@@ -595,7 +595,21 @@ public class MainActivity extends AppCompatActivity {
                 }
                 catch(Exception e){
                     Toast.makeText(MainActivity.this, "File not saved.", Toast.LENGTH_LONG).show();
-                    e.printStackTrace();
+/*
+                    new AlertDialog.Builder(MainActivity.this)
+                            .setTitle("Exception Info")
+                            .setMessage(e.toString() + "")
+
+                            // Specifying a listener allows you to take an action before dismissing the dialog.
+                            // The dialog is automatically dismissed when a dialog button is clicked.
+                            .setPositiveButton("ok", new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int which) {
+                                    return;
+                                }
+                            })
+                            .show();
+ */
                 }
             }
         }
@@ -611,98 +625,98 @@ public class MainActivity extends AppCompatActivity {
         builder.setTitle("Wähle Passwort für Datenverschlüsselung:");
 
         // Set up the input
-                final EditText input = new EditText(this);
-                input.setInputType(InputType.TYPE_CLASS_TEXT);
-                builder.setView(input);
+        final EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_TEXT);
+        builder.setView(input);
 
-                builder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        mPassword = input.getText().toString();
+        builder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                mPassword = input.getText().toString();
 
-                        // Create subfolder if it does not already exist
-                        String subDirString = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS) + SUBFOLDER;
-                        File subDir = new File(subDirString);
-                        if (!subDir.exists()) {
-                            subDir.mkdirs();
-                        }
+                // Create subfolder if it does not already exist
+                String subDirString = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS) + SUBFOLDER;
+                File subDir = new File(subDirString);
+                if (!subDir.exists()) {
+                    subDir.mkdirs();
+                }
 
-                        String passwordFileName = "info.csv";
-                        String passwordPath = subDirString + "/" + passwordFileName;
+                String passwordFileName = "info.csv";
+                String passwordPath = subDirString + "/" + passwordFileName;
 
-                        File passwordFile = new File(passwordPath);
-                        if (!passwordFile.exists()) {
-                            try {
-                                passwordFile.createNewFile();
-                            } catch (IOException ioe) {
-                                ioe.printStackTrace();
-                            }
-                        }
-                        try {
-                            FileOutputStream fileOutput = new FileOutputStream(passwordFile);
-                            OutputStreamWriter outputStreamWriter = new OutputStreamWriter(fileOutput);
-                            outputStreamWriter.append(mPassword + "\n");
-                            outputStreamWriter.close();
-                        } catch(Exception e){
-                            Toast.makeText(MainActivity.this, "File not saved.", Toast.LENGTH_LONG).show();
-                            e.printStackTrace();
-                        }
-
-
-                        // Zipped folder name
-                        try {
-                            String zipFilePath = sHealthDataFileZip;
-                            ZipFile zipFile = new ZipFile(getFilesDir() + "/" + zipFilePath);
-                            ArrayList<File> filesToAdd = new ArrayList<>();
-                            // Add files which are to be compressed to the array list
-                            filesToAdd.add(new File(getFilesDir(), sHealthDataFile));
-
-                            // Initiate Zip Parameters
-                            ZipParameters parameters = new ZipParameters();
-                            // set compression method to deflate compression
-                            parameters.setCompressionMethod(Zip4jConstants.COMP_DEFLATE);
-                            parameters.setCompressionLevel(Zip4jConstants.DEFLATE_LEVEL_NORMAL);
-
-                            if (!mPassword.equals("")) {
-                                parameters.setEncryptFiles(true);
-                                parameters.setEncryptionMethod(Zip4jConstants.ENC_METHOD_AES);
-                                parameters.setAesKeyStrength(Zip4jConstants.AES_STRENGTH_256);
-                                // Setting password
-                                parameters.setPassword(mPassword);
-                                Toast.makeText(MainActivity.this, "File encrypted.", Toast.LENGTH_LONG).show();
-                            } else {
-                                Toast.makeText(MainActivity.this, "File not encrypted.", Toast.LENGTH_LONG).show();
-                            }
-
-                            zipFile.addFiles(filesToAdd, parameters);
+                File passwordFile = new File(passwordPath);
+                if (!passwordFile.exists()) {
+                    try {
+                        passwordFile.createNewFile();
+                    } catch (IOException ioe) {
+                        ioe.printStackTrace();
+                    }
+                }
+                try {
+                    FileOutputStream fileOutput = new FileOutputStream(passwordFile, true);
+                    OutputStreamWriter outputStreamWriter = new OutputStreamWriter(fileOutput);
+                    outputStreamWriter.append(mPassword + "\n");
+                    outputStreamWriter.close();
+                } catch(Exception e){
+                    Toast.makeText(MainActivity.this, "File not saved.", Toast.LENGTH_LONG).show();
+                    e.printStackTrace();
+                }
 
 
+                // Zipped folder name
+                try {
+                    String zipFilePath = sHealthDataFileZip;
+                    ZipFile zipFile = new ZipFile(getFilesDir() + "/" + zipFilePath);
+                    ArrayList<File> filesToAdd = new ArrayList<>();
+                    // Add files which are to be compressed to the array list
+                    filesToAdd.add(new File(getFilesDir(), sHealthDataFile));
+
+                    // Initiate Zip Parameters
+                    ZipParameters parameters = new ZipParameters();
+                    // set compression method to deflate compression
+                    parameters.setCompressionMethod(Zip4jConstants.COMP_DEFLATE);
+                    parameters.setCompressionLevel(Zip4jConstants.DEFLATE_LEVEL_NORMAL);
+
+                    if (!mPassword.equals("")) {
+                        parameters.setEncryptFiles(true);
+                        parameters.setEncryptionMethod(Zip4jConstants.ENC_METHOD_AES);
+                        parameters.setAesKeyStrength(Zip4jConstants.AES_STRENGTH_256);
+                        // Setting password
+                        parameters.setPassword(mPassword);
+                        Toast.makeText(MainActivity.this, "File encrypted.", Toast.LENGTH_LONG).show();
+                    } else {
+                        Toast.makeText(MainActivity.this, "File not encrypted.", Toast.LENGTH_LONG).show();
+                    }
+
+                    zipFile.addFiles(filesToAdd, parameters);
 
 
-                            // Send data
-                            try{
-                                Context context = getApplicationContext();
-                                File filelocation = new File(getFilesDir(), sHealthDataFileZip);
-                                Uri path = FileProvider.getUriForFile(context, "com.example.shealthexport.fileprovider", filelocation);
-
-                                Intent fileIntent = new Intent(Intent.ACTION_SEND);
-                                fileIntent.setType("text/csv");
-                                fileIntent.putExtra(Intent.EXTRA_SUBJECT, sHealthDataFileZip);
-                                fileIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-                                fileIntent.putExtra(Intent.EXTRA_STREAM, path);
-
-                                startActivity(Intent.createChooser(fileIntent, "Send " + sHealthDataFileZip));
-                            }
-                            catch(Exception e){
-                                Toast.makeText(MainActivity.this, "File not sent.", Toast.LENGTH_LONG).show();
-                                e.printStackTrace();
-                            }
 
 
-                        } catch (ZipException e) {
-                            Toast.makeText(MainActivity.this, "File not encrypted.", Toast.LENGTH_LONG).show();
-                            e.printStackTrace();
-                        }
+                    // Send data
+                    try{
+                        Context context = getApplicationContext();
+                        File filelocation = new File(getFilesDir(), sHealthDataFileZip);
+                        Uri path = FileProvider.getUriForFile(context, "com.example.shealthexport.fileprovider", filelocation);
+
+                        Intent fileIntent = new Intent(Intent.ACTION_SEND);
+                        fileIntent.setType("text/csv");
+                        fileIntent.putExtra(Intent.EXTRA_SUBJECT, sHealthDataFileZip);
+                        fileIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                        fileIntent.putExtra(Intent.EXTRA_STREAM, path);
+
+                        startActivity(Intent.createChooser(fileIntent, "Send " + sHealthDataFileZip));
+                    }
+                    catch(Exception e){
+                        Toast.makeText(MainActivity.this, "File not sent.", Toast.LENGTH_LONG).show();
+                        e.printStackTrace();
+                    }
+
+
+                } catch (ZipException e) {
+                    Toast.makeText(MainActivity.this, "File not encrypted.", Toast.LENGTH_LONG).show();
+                    e.printStackTrace();
+                }
                     }
                 });
                 builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
@@ -739,8 +753,9 @@ public class MainActivity extends AppCompatActivity {
 
 
     private boolean checkIfAlreadyhavePermission() {
-        int result = ContextCompat.checkSelfPermission(this, Manifest.permission.GET_ACCOUNTS);
-        if (result == PackageManager.PERMISSION_GRANTED) {
+        int result1 = ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.READ_EXTERNAL_STORAGE);
+        int result2 = ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE);
+        if ((result1 == PackageManager.PERMISSION_GRANTED) && (result2 == PackageManager.PERMISSION_GRANTED)) {
             return true;
         } else {
             return false;
@@ -748,7 +763,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void requestForSpecificPermission() {
-        ActivityCompat.requestPermissions(this,
+        ActivityCompat.requestPermissions(MainActivity.this,
                 new String[]{Manifest.permission.READ_EXTERNAL_STORAGE,
                         Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_CODE_READ_WRITE_EXTERNAL_STORAGE);
     }
